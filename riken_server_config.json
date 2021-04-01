@@ -1,0 +1,195 @@
+{
+    "advanced_settings": {
+        "default_log_rotation_in_days": 5,
+        "default_number_of_transfer_threads": 4,
+        "default_temporary_password_lifetime_in_seconds": 120,
+        "dns_cache": {
+            "eviction_age_in_seconds": 3600,
+            "shared_memory_size_in_bytes": 5000000
+        },
+        "hostname_cache": {
+            "eviction_age_in_seconds": 3600,
+            "shared_memory_size_in_bytes": 2500000
+        },
+        "maximum_number_of_concurrent_rule_engine_server_processes": 4,
+        "maximum_size_for_single_buffer_in_megabytes": 32,
+        "maximum_temporary_password_lifetime_in_seconds": 1000,
+        "rule_engine_server_execution_time_in_seconds": 120,
+        "rule_engine_server_sleep_time_in_seconds": 1,
+        "transfer_buffer_size_for_parallel_transfer_in_megabytes": 4,
+        "transfer_chunk_size_for_parallel_transfer_in_megabytes": 40
+    },
+    "catalog_provider_hosts": [
+        "avogadro.renci.org"
+    ],
+    "catalog_service_role": "provider",
+    "client_api_whitelist_policy": "enforce",
+    "default_dir_mode": "0750",
+    "default_file_mode": "0600",
+    "default_hash_scheme": "SHA256",
+    "default_resource_name": "demoResc",
+    "environment_variables": {},
+    "federation": [],
+    "match_hash_policy": "compatible",
+    "negotiation_key": "32_byte_server_negotiation_key__",
+    "plugin_configuration": {
+        "authentication": {},
+        "database": {
+            "postgres": {
+                "db_host": "localhost",
+                "db_name": "ICAT",
+                "db_odbc_driver": "PostgreSQL ANSI",
+                "db_password": "testpassword",
+                "db_port": 5432,
+                "db_username": "irods"
+            }
+        },
+        "network": {},
+        "resource": {},
+        "rule_engines": [
+            {
+                "instance_name": "irods_rule_engine_plugin-event_handler-data_object_modified-instance",
+                "plugin_name": "irods_rule_engine_plugin-event_handler-data_object_modified",
+                "plugin_specific_configuration": {
+                    "policies_to_invoke" : [
+						{   "active_policy_clauses" : ["post"],
+							"events" : ["put", "get", "create", "read", "write", "rename", "registration"],
+							"policy_to_invoke"    : "irods_policy_access_time",
+							"configuration" : {
+							}
+						},
+                        {
+                            "comment"  : "S1.3 : When a file is written to the Tier 1 local file storage, replication to Tier 2 should be started within several minutes.",
+                            "comment2" : "S1.5 : After the file is updated on Tier 1 the file should be replicated from Tier 1 to Tier 2 in a few minutes.",
+
+                            "active_policy_clauses" : ["post"],
+                            "events" : ["put", "create", "write", "registration"],
+                            "policy_to_invoke" : "irods_policy_enqueue_rule",
+                            "parameters" : {
+                                "delay_conditions" : "<EF>DOUBLE UNTIL SUCCESS OR 10 TIMES</EF><INST_NAME>irods_rule_engine_plugin-cpp_default_policy-instance</INST_NAME>",
+                                "policy_to_invoke" : "irods_policy_execute_rule",
+                                "parameters" : {
+                                    "policy_to_invoke"    : "irods_policy_data_replication",
+                                    "configuration" : {
+                                        "source_to_destination_map" : {
+                                            "tier_1" : ["tier_2"]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "comment" : "S1.5 : If the file doesn't exist on Tier 1, the file should be replicated from Tier 2 to Tier 1.",
+
+                            "active_policy_clauses" : ["post"],
+                            "events" : ["get", "write"],
+							"policy_to_invoke" : "irods_policy_data_replication",
+							"configuration" : {
+								"source_to_destination_map" : {
+									"tier_2" : ["tier_1"]
+								}
+							}
+                        },
+                        {
+                            "comment" : "S11.9 : To keep reliability of data, checksumming is required for every replication operation",
+
+                            "active_policy_clauses" : ["post"],
+                            "events" : ["replication"],
+                            "policy_to_invoke" : "irods_policy_data_verification",
+                            "configuration" : {
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "instance_name": "irods_rule_engine_plugin-policy_engine-access_time-instance",
+                "plugin_name": "irods_rule_engine_plugin-policy_engine-access_time",
+                "plugin_specific_configuration": {
+                 }
+            },
+            {
+                "instance_name": "irods_rule_engine_plugin-policy_engine-data_replication-instance",
+                "plugin_name": "irods_rule_engine_plugin-policy_engine-data_replication",
+                "plugin_specific_configuration": {
+                 }
+            },
+            {
+                "instance_name": "irods_rule_engine_plugin-policy_engine-data_retention-instance",
+                "plugin_name": "irods_rule_engine_plugin-policy_engine-data_retention",
+                "plugin_specific_configuration": {
+                    "mode" : "trim_single_replica"
+                }
+            },
+            {
+                "instance_name": "irods_rule_engine_plugin-policy_engine-data_verification-instance",
+                "plugin_name": "irods_rule_engine_plugin-policy_engine-data_verification",
+                "plugin_specific_configuration": {
+                }
+            },
+            {
+                "instance_name": "irods_rule_engine_plugin-policy_engine-query_processor-instance",
+                "plugin_name": "irods_rule_engine_plugin-policy_engine-query_processor",
+                "plugin_specific_configuration": {
+                }
+            },
+            {
+                "instance_name": "irods_rule_engine_plugin-policy_engine-filesystem_usage-instance",
+                "plugin_name": "irods_rule_engine_plugin-policy_engine-filesystem_usage",
+                "plugin_specific_configuration": {
+                }
+            },
+            {
+                "instance_name": "irods_rule_engine_plugin-policy_engine-verify_checksum-instance",
+                "plugin_name": "irods_rule_engine_plugin-policy_engine-verify_checksum",
+                "plugin_specific_configuration": {
+                }
+            },
+            {
+                "instance_name": "irods_rule_engine_plugin-irods_rule_language-instance",
+                "plugin_name": "irods_rule_engine_plugin-irods_rule_language",
+                "plugin_specific_configuration": {
+                    "re_data_variable_mapping_set": [
+                        "core"
+                    ],
+                    "re_function_name_mapping_set": [
+                        "core"
+                    ],
+                    "re_rulebase_set": [
+                        "core"
+                    ],
+                    "regexes_for_supported_peps": [
+                        "ac[^ ]*",
+                        "msi[^ ]*",
+                        "[^ ]*pep_[^ ]*_(pre|post|except|finally)"
+                    ]
+                },
+                "shared_memory_instance": "irods_rule_language_rule_engine"
+            },
+            {
+                "instance_name": "irods_rule_engine_plugin-cpp_default_policy-instance",
+                "plugin_name": "irods_rule_engine_plugin-cpp_default_policy",
+                "plugin_specific_configuration": {}
+            }
+        ]
+    },
+    "rule_engine_namespaces": [
+        ""
+    ],
+    "schema_name": "server_config",
+    "schema_validation_base_uri": "file:///var/lib/irods/configuration_schemas",
+    "schema_version": "v3",
+    "server_control_plane_encryption_algorithm": "AES-256-CBC",
+    "server_control_plane_encryption_num_hash_rounds": 16,
+    "server_control_plane_key": "32_byte_server_control_plane_key",
+    "server_control_plane_port": 1248,
+    "server_control_plane_timeout_milliseconds": 10000,
+    "server_port_range_end": 20199,
+    "server_port_range_start": 20000,
+    "xmsg_port": 1279,
+    "zone_auth_scheme": "native",
+    "zone_key": "TEMPORARY_ZONE_KEY",
+    "zone_name": "tempZone",
+    "zone_port": 1247,
+    "zone_user": "rods"
+}

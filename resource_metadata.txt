@@ -1,0 +1,28 @@
+imeta ls -R tier_1
+
+attribute: irods::resource::filesystem_percent_used
+value: 86.274462
+units:
+----
+attribute: irods::resource::threshold_percent
+value: 10
+units:
+----
+attribute: irods::resource::object_limit
+value: 1000
+units:
+----
+attribute: irods::verification::type
+value: checksum
+units:
+
+
+
+
+imeta ls -R tier_2
+
+AVUs defined for resource tier_2:
+attribute: irods::verification::type
+value: checksum
+units:
+
