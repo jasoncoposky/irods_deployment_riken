@@ -277,7 +277,7 @@ OUTPUT ruleExecOut
 
 We can see in the `delay_conditions` section of the policy the tag `<PLUSET>` which is short for `Plus Execution Time`, currently set to ten seconds.  This value should be set for the produciton deployment to a more coarse grained value in order to free up both file system activity as well as CPU usage.  The policy `irods_policy_filesystem_usage` has a configuration parameter of `source_resource`.  This value should be set to the resource name which is to be monitored.
 
-The file `S1.4_data_retention_eighty_percent.r` contains the second half of the effort to identify data objects on a filesystem which has exceeded a threshold of usage.  This policy relies on a configured specific SQL query stored in the iRODS catalog and found in the file `archive_specific_query.sh`.  This policy periodically runs this query to find data objects which need to be moved from `tier_1` to `tier_2` per this policy.  The threshold for this policy is set via metadata on the storage resource in question.  In this instance `tier_1` will have a metadata tag of `irods::resource::threshold_percent` with a value holding the percentage threshold in question.  Once an object is identified, two policies are sequentially invoked.  The first `irods_data_verification` will guarantee that the data object in question from `source_resource` `tier_1` has a valid replica on `destination_resource` `tier_2` with a valid checksum, as configured by resource metadata which has been explained above.  Thes resource names shold be changed to the appropriat values in the production deployment.  If this check fails, then the second policy is not invoked due to the `stop_on_error` flag set to `true`.  Assuming the verifiation succeeds, the scond policy will trim the single replica from `tier_1`.  The `mode` optoin for `irods_policy_data_retention` has values of `trim_single_replica` or `remove_all_replicas`.  In this deployment we wish to simply remove the single replica from `tier_1`.
+The file `S1.4_data_retention_eighty_percent.r` contains the second half of the effort to identify data objects on a filesystem which has exceeded a threshold of usage.  This policy relies on a configured specific SQL query stored in the iRODS catalog and found in the file `archive_specific_query.sh`.  This policy periodically runs this query to find data objects which need to be moved from `tier_1` to `tier_2` per this policy.  The threshold for this policy is set via metadata on the storage resource in question.  In this instance `tier_1` will have a metadata tag of `irods::resource::threshold_percent` with a value holding the percentage threshold in question.  Once an object is identified, two policies are sequentially invoked.  The first `irods_data_verification` will guarantee that the data object in question from `source_resource` `tier_1` has a valid replica on `destination_resource` `tier_2` with a valid checksum, as configured by resource metadata which has been explained above.  Thes resource names shold be changed to the appropriat values in the production deployment.  If this check fails, then the second policy is not invoked due to the `stop_on_error` flag set to `true`.  Assuming the verifiation succeeds, the scond policy will trim the single replica from `tier_1`.  The `mode` optoin for `irods_policy_data_retention` has values of `trim_single_replica` or `remove_all_replicas`.  In this deployment we wish to simply remove the single replica from `tier_1`.  The `resource_white_list` is an array of reosurce names from which the policy may remove data.  This is a back stop to prevent data from being removed accidentally from the wrong resource.  The value `tier_1` shold be changed to an appropriate production value.
 
 ```
 {
@@ -322,3 +322,82 @@ INPUT null
 OUTPUT ruleExecOut
 ```
 
+For item 8 in scenario one we have split the policy into two files.  The first of which `S1.8_data_retention_over_a_year.r` handles removing data from the `tier_1` resource should it be older than a year.  We see in the configuration that objects are queried which reside on `tier_1` and whose lifetime exceeds the `lifetime` parameter in seconds.  For this example this is set to 60 seconds, but should be changed to the desired years value of 31540000.  Once again data verification is performed between `tier_1` and `tier_2` before data is trimmed from `tier_1`.  As in the other rules, the `<PLUSET>` value should be set to an appropriate production value.
+
+```
+{
+    "policy_to_invoke" : "irods_policy_enqueue_rule",
+    "parameters" : {
+
+        "comment" : "S1.8 : Files that have not been accessed for over a year are deleted from the Tier 1 local storage regardless of the amount of Tier 1 local storage used.",
+
+        "delay_conditions" : "<PLUSET>1s</PLUSET><EF>REPEAT FOR EVER</EF><INST_NAME>irods_rule_engine_plugin-cpp_default_policy-instance</INST_NAME>",
+        "policy_to_invoke" : "irods_policy_execute_rule",
+        "parameters" : {
+            "policy_to_invoke"    : "irods_policy_query_processor",
+            "parameters" : {
+                "lifetime"      : 60,
+                "stop_on_error" : "true",
+                "query_string"  : "SELECT USER_NAME, COLL_NAME, DATA_NAME, RESC_NAME WHERE RESC_NAME = 'tier_1' AND META_DATA_ATTR_NAME = 'irods::access_time' AND META_DATA_ATTR_VALUE < 'IRODS_TOKEN_LIFETIME_END_TOKEN'",
+                "query_limit"   : 1000,
+                "query_type"    : "general",
+                "number_of_threads" : 4,
+                "policies_to_invoke" : [
+                    {
+                        "policy_to_invoke"    : "irods_policy_data_verification",
+                        "parameters" : {
+                            "source_resource" : "tier_1",
+                            "destination_resource" : "tier_2"
+                        }
+                    },
+                    {
+                        "policy_to_invoke"    : "irods_policy_data_retention",
+                        "configuration" : {
+                            "source_to_destination_map" : {
+                                "mode" : "trim_single_replica",
+                                "resource_white_list" : ["tier_1"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    }
+}
+INPUT null
+OUTPUT ruleExecOut
+```
+
+The second portion of item 8 is to periodically verify data integrity.  This is handled by another asynchrnous rule found in `S1.8_verify_data_integrity.r`.  This rule will find all data objects on a given set of resources matching the wildcard value, in this instance `tier_%` and then perform the data integrity check on that replica.  This integrity check is once again driven by the metadata annotating the resource which requests the checksum style verification.  This rule will currently be run every 1 second due to the `<PLUSET>` value, which also should be changed for production deployment.
+
+```
+{
+    "policy_to_invoke" : "irods_policy_enqueue_rule",
+    "parameters" : {
+
+        "comment" : "S1.8 : Files that have not been accessed for over a year are deleted from the Tier 1 local storage regardless of the amount of Tier 1 local storage used.",
+
+        "delay_conditions" : "<PLUSET>1s</PLUSET><EF>REPEAT FOR EVER</EF><INST_NAME>irods_rule_engine_plugin-cpp_default_policy-instance</INST_NAME>",
+        "policy_to_invoke" : "irods_policy_execute_rule",
+        "parameters" : {
+            "policy_to_invoke"    : "irods_policy_query_processor",
+            "parameters" : {
+                "query_string"  : "SELECT USER_NAME, COLL_NAME, DATA_NAME, RESC_NAME WHERE RESC_NAME like 'tier_%'",
+                "query_limit"   : 0,
+                "query_type"    : "general",
+                "number_of_threads" : 1,
+                "policies_to_invoke" : [
+                    {
+                        "policy_to_invoke" : "irods_policy_verify_checksum",
+                        "configuration" : {
+                            "log_errors" : "true"
+                        }
+                    }
+                ]
+            }
+        }
+    }
+}
+INPUT null
+OUTPUT ruleExecOut
+```
