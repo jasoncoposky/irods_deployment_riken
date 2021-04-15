@@ -251,3 +251,74 @@ And finally within this block of configuration we see the rule engine plugins wh
                 }
             },
 ```
+
+The asynchronous policy is satisifed by one of four rule which will be invoked from the command line.  Thes rule push jobs on to the delayed execution queue, which will run for ever.  The first rule is found in the file `S1.4_resource_freespace_monitor.r`.  This rule will watch a storage resources vault in order to calculate the file system usage.  The percentage of storage used is then applied as metadata to the storage resource `irods::resource::filesystem_percent_used`.  This metadata value is used by an additional rule detailed later.
+
+```
+{
+    "comment" : "S1.4 : When the disk usage exceeds 80%, files are automatically deleted from Tier 1 in the order of the oldest last access time",
+
+    "policy_to_invoke" : "irods_policy_enqueue_rule",
+    "parameters" : {
+        "comment"          : "Set the PLUSET value to the interval desired to run the rule",
+        "delay_conditions" : "<PLUSET>10s</PLUSET><EF>REPEAT FOR EVER</EF><INST_NAME>irods_rule_engine_plugin-cpp_default_policy-instance</INST_NAME>",
+        "policy_to_invoke" : "irods_policy_execute_rule",
+        "parameters" : {
+            "policy_to_invoke"    : "irods_policy_filesystem_usage",
+            "parameters" : {
+                "source_resource" : "tier_1"
+            }
+        }
+    }
+}
+INPUT null
+OUTPUT ruleExecOut
+```
+
+We can see in the `delay_conditions` section of the policy the tag `<PLUSET>` which is short for `Plus Execution Time`, currently set to ten seconds.  This value should be set for the produciton deployment to a more coarse grained value in order to free up both file system activity as well as CPU usage.  The policy `irods_policy_filesystem_usage` has a configuration parameter of `source_resource`.  This value should be set to the resource name which is to be monitored.
+
+The file `S1.4_data_retention_eighty_percent.r` contains the second half of the effort to identify data objects on a filesystem which has exceeded a threshold of usage.  This policy relies on a configured specific SQL query stored in the iRODS catalog and found in the file `archive_specific_query.sh`.  This policy periodically runs this query to find data objects which need to be moved from `tier_1` to `tier_2` per this policy.  The threshold for this policy is set via metadata on the storage resource in question.  In this instance `tier_1` will have a metadata tag of `irods::resource::threshold_percent` with a value holding the percentage threshold in question.  Once an object is identified, two policies are sequentially invoked.  The first `irods_data_verification` will guarantee that the data object in question from `source_resource` `tier_1` has a valid replica on `destination_resource` `tier_2` with a valid checksum, as configured by resource metadata which has been explained above.  Thes resource names shold be changed to the appropriat values in the production deployment.  If this check fails, then the second policy is not invoked due to the `stop_on_error` flag set to `true`.  Assuming the verifiation succeeds, the scond policy will trim the single replica from `tier_1`.  The `mode` optoin for `irods_policy_data_retention` has values of `trim_single_replica` or `remove_all_replicas`.  In this deployment we wish to simply remove the single replica from `tier_1`.
+
+```
+{
+    "policy_to_invoke" : "irods_policy_enqueue_rule",
+    "parameters" : {
+
+        "comment" : "S1.4 : When the disk usage exceeds 80%, files are automatically deleted from Tier 1 in the order of the oldest last access time",
+
+        "delay_conditions" : "<PLUSET>20s</PLUSET><EF>REPEAT FOR EVER</EF><INST_NAME>irods_rule_engine_plugin-cpp_default_policy-instance</INST_NAME>",
+        "policy_to_invoke" : "irods_policy_execute_rule",
+        "parameters" : {
+            "policy_to_invoke"  : "irods_policy_query_processor",
+            "parameters" : {
+                "stop_on_error" : "true",
+                "query_string"  : "tier_1_archive_query",
+                "query_limit"   : 1000,
+                "query_type"    : "specific",
+                "number_of_threads" : 4,
+                "policies_to_invoke" : [
+                    {
+                        "policy_to_invoke"    : "irods_policy_data_verification",
+                        "parameters" : {
+                            "source_resource" : "tier_1",
+                            "destination_resource" : "tier_2"
+                        }
+                    },
+                    {
+                        "policy_to_invoke"    : "irods_policy_data_retention",
+                        "configuration" : {
+                            "source_to_destination_map" : {
+                                "mode" : "trim_single_replica",
+                                "resource_white_list" : ["tier_1"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    }
+}
+INPUT null
+OUTPUT ruleExecOut
+```
+
